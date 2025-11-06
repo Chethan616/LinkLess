@@ -33,7 +33,12 @@ class SmsReceiver : BroadcastReceiver() {
             val sender = message.originatingAddress ?: return
             val messageBody = message.messageBody ?: return
             
+            Log.d(tag, "=== SMS RECEIVE DEBUG ===")
             Log.d(tag, "Received SMS from: $sender")
+            Log.d(tag, "Message length: ${messageBody.length}")
+            Log.d(tag, "First 20 chars: ${messageBody.take(20)}")
+            Log.d(tag, "Starts with 'LK:': ${messageBody.startsWith("LK:")}")
+            Log.d(tag, "========================")
             
             // Check if it's a Linkless request (starts with "LK:")
             if (messageBody.startsWith("LK:")) {

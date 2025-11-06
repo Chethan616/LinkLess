@@ -76,12 +76,30 @@ class _BrowserTabState extends State<BrowserTab> {
   }
 
   Future<void> _sendRequest() async {
-    final url = _urlController.text.trim();
+    var url = _urlController.text.trim();
 
     if (url.isEmpty) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Please enter a URL')));
+      return;
+    }
+
+    // Format URL properly - add https:// if no protocol specified
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://$url';
+    }
+
+    // Validate URL format
+    try {
+      final uri = Uri.parse(url);
+      if (!uri.hasScheme || uri.host.isEmpty) {
+        throw const FormatException('Invalid URL');
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Invalid URL format: ${e.toString()}')),
+      );
       return;
     }
 
@@ -577,60 +595,63 @@ class _BrowserTabState extends State<BrowserTab> {
     // Empty state - Liquid Glass welcome message
     return LiquidGlassCard(
       child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(32),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: isDark
-                      ? [
-                          ColorPalette.primaryLight.withOpacity(0.15),
-                          ColorPalette.primaryLight.withOpacity(0.05),
-                        ]
-                      : [
-                          ColorPalette.primary.withOpacity(0.1),
-                          ColorPalette.primary.withOpacity(0.02),
-                        ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: isDark
+                        ? [
+                            ColorPalette.primaryLight.withOpacity(0.15),
+                            ColorPalette.primaryLight.withOpacity(0.05),
+                          ]
+                        : [
+                            ColorPalette.primary.withOpacity(0.1),
+                            ColorPalette.primary.withOpacity(0.02),
+                          ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  shape: BoxShape.circle,
                 ),
-                shape: BoxShape.circle,
+                child: Icon(
+                  CupertinoIcons.doc_text_search,
+                  size: 72,
+                  color: ColorPalette.primary,
+                ),
               ),
-              child: Icon(
-                CupertinoIcons.doc_text_search,
-                size: 72,
-                color: ColorPalette.primary,
-              ),
-            ),
-            const SizedBox(height: 28),
-            Text(
-              'Browse the Web via SMS',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.5,
-                color: isDark
-                    ? ColorPalette.textPrimaryDark
-                    : ColorPalette.textPrimary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 14),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Text(
-                'Enter a URL above to fetch webpage content through encrypted SMS messages',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  height: 1.5,
+              const SizedBox(height: 28),
+              Text(
+                'Browse the Web via SMS',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.5,
                   color: isDark
-                      ? ColorPalette.textSecondaryDark
-                      : ColorPalette.textSecondary,
+                      ? ColorPalette.textPrimaryDark
+                      : ColorPalette.textPrimary,
                 ),
                 textAlign: TextAlign.center,
               ),
-            ),
-          ],
+              const SizedBox(height: 14),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Text(
+                  'Enter a URL above to fetch webpage content through encrypted SMS messages',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    height: 1.5,
+                    color: isDark
+                        ? ColorPalette.textSecondaryDark
+                        : ColorPalette.textSecondary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

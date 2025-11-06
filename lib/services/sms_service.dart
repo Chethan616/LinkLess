@@ -79,6 +79,17 @@ class SmsService {
       // Add Linkless prefix
       final message = 'LK:$encryptedUrl';
 
+      // Debug logging
+      print('=== SMS SEND DEBUG ===');
+      print('Original URL: $url');
+      print('Encrypted length: ${encryptedUrl.length}');
+      print(
+        'Message prefix: ${message.substring(0, message.length > 20 ? 20 : message.length)}...',
+      );
+      print('Full message length: ${message.length}');
+      print('Gateway number: $_gatewayPhoneNumber');
+      print('=====================');
+
       // Send SMS
       await _telephony.sendSms(to: _gatewayPhoneNumber!, message: message);
 
