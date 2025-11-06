@@ -139,18 +139,43 @@ class SmsReceiver : BroadcastReceiver() {
     
     /**
      * Decrypt incoming message
-     * TODO: Implement actual decryption using CryptoService via Flutter
-     * For now, this is a placeholder that assumes base64 encoding
+     * Handles both test mode (plain URLs) and encrypted mode (AES-GCM)
+     * 
+     * Test Mode: URL starts with http:// or https://
+     * Encrypted Mode: Base64 encoded AES-GCM ciphertext
      */
     private fun decryptMessage(encryptedMessage: String): String {
+        // TEST MODE: Check if message is already a plain URL
+        if (encryptedMessage.startsWith("http://", ignoreCase = true) || 
+            encryptedMessage.startsWith("https://", ignoreCase = true)) {
+            Log.d(tag, "⚠️  TEST MODE: Using plain URL (unencrypted)")
+            return encryptedMessage
+        }
+        
+        // Try to decrypt encrypted messages
         return try {
-            // Placeholder: Just decode base64 for testing
-            // In production, this should call Flutter's CryptoService
+            // Try base64 decode first
             val decoded = Base64.getDecoder().decode(encryptedMessage)
-            String(decoded)
+            val decodedString = String(decoded, Charsets.UTF_8)
+            
+            Log.d(tag, "Base64 decoded result (first 50 chars): ${decodedString.take(50)}")
+            
+            // Check if decoded string looks like it contains URL patterns
+            // This is a heuristic - if it has http/https or common domains, use it
+            if (decodedString.contains("http", ignoreCase = true) || 
+                decodedString.contains(".com", ignoreCase = true) ||
+                decodedString.contains(".org", ignoreCase = true) ||
+                decodedString.matches(Regex(".*[a-zA-Z0-9-]+\\.[a-z]{2,}.*"))) {
+                Log.d(tag, "Decoded string looks like a URL, using it")
+                decodedString
+            } else {
+                Log.w(tag, "Decoded string doesn't look like a URL - this is encrypted data that needs AES-GCM decryption")
+                Log.w(tag, "❌ ENCRYPTION MODE: Cannot decrypt AES-GCM in native code yet")
+                throw Exception("Cannot decrypt AES-GCM encrypted data. Gateway needs matching encryption keys.")
+            }
         } catch (e: Exception) {
-            Log.w(tag, "Decryption placeholder - using message as-is")
-            encryptedMessage
+            Log.e(tag, "Decryption failed: ${e.message}")
+            throw Exception("Decryption failed. Use TEST MODE or set up encryption keys.")
         }
     }
     

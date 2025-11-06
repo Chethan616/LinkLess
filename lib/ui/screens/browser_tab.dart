@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import '../../services/sms_service.dart';
 import '../../services/crypto_service.dart';
+import '../../services/app_mode_service.dart';
 import '../../core/color_palette.dart';
 import '../widgets/liquid_glass_components.dart';
 
@@ -18,12 +20,15 @@ class _BrowserTabState extends State<BrowserTab> {
   final TextEditingController _urlController = TextEditingController();
   final SmsService _smsService = SmsService.instance;
   final CryptoService _cryptoService = CryptoService.instance;
+  final AppModeService _appModeService = AppModeService.instance;
 
   String? _currentContent;
   String? _currentUrl;
   bool _isLoading = false;
   bool _isInitialized = false;
   String? _errorMessage;
+  Timer? _requestTimeout;
+  AppMode _currentMode = AppMode.client;
 
   @override
   void initState() {
@@ -33,6 +38,17 @@ class _BrowserTabState extends State<BrowserTab> {
 
   Future<void> _initializeServices() async {
     try {
+      // Check app mode first
+      _currentMode = await _appModeService.getMode();
+
+      // If in gateway mode, show informational message
+      if (_currentMode == AppMode.gateway) {
+        setState(() {
+          _isInitialized = true;
+        });
+        return;
+      }
+
       // Initialize crypto service
       await _cryptoService.initialize();
 
@@ -45,6 +61,12 @@ class _BrowserTabState extends State<BrowserTab> {
               'SMS permissions not granted. Please enable SMS permissions.';
         });
         return;
+      }
+
+      // Load gateway number from settings
+      final savedGatewayNumber = await _appModeService.getGatewayNumber();
+      if (savedGatewayNumber != null) {
+        _smsService.setGatewayNumber(savedGatewayNumber);
       }
 
       // Set up message callback
@@ -61,6 +83,9 @@ class _BrowserTabState extends State<BrowserTab> {
   }
 
   void _handleIncomingMessage(String message, String sender) {
+    // Cancel timeout when response received
+    _requestTimeout?.cancel();
+
     setState(() {
       _currentContent = message;
       _isLoading = false;
@@ -69,7 +94,8 @@ class _BrowserTabState extends State<BrowserTab> {
     // Show notification
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Received response from $sender'),
+        content: Text('✅ Received response from $sender'),
+        backgroundColor: Colors.green,
         duration: const Duration(seconds: 2),
       ),
     );
@@ -108,7 +134,8 @@ class _BrowserTabState extends State<BrowserTab> {
       return;
     }
 
-    if (!_cryptoService.isReady) {
+    // Only check crypto service if NOT in test mode
+    if (!_smsService.testMode && !_cryptoService.isReady) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text(
@@ -124,11 +151,43 @@ class _BrowserTabState extends State<BrowserTab> {
       return;
     }
 
+    // Show test mode warning if enabled
+    if (_smsService.testMode) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('⚠️ TEST MODE: Sending unencrypted URL'),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+
     setState(() {
       _isLoading = true;
       _currentUrl = url;
       _currentContent = null;
       _errorMessage = null;
+    });
+
+    // Cancel any existing timeout
+    _requestTimeout?.cancel();
+
+    // Set timeout for 60 seconds
+    _requestTimeout = Timer(const Duration(seconds: 60), () {
+      if (_isLoading && mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage =
+              'Request timed out. Please check if gateway is running and try again.';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⏱️ Request timed out after 60 seconds'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
     });
 
     try {
@@ -141,12 +200,14 @@ class _BrowserTabState extends State<BrowserTab> {
           ),
         );
       } else {
+        _requestTimeout?.cancel();
         setState(() {
           _isLoading = false;
           _errorMessage = 'Failed to send SMS request';
         });
       }
     } catch (e) {
+      _requestTimeout?.cancel();
       setState(() {
         _isLoading = false;
         _errorMessage = 'Error: $e';
@@ -427,50 +488,52 @@ class _BrowserTabState extends State<BrowserTab> {
     if (_errorMessage != null) {
       return LiquidGlassCard(
         child: Center(
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: ColorPalette.error.withOpacity(isDark ? 0.2 : 0.1),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: ColorPalette.error.withOpacity(0.3),
-                width: 1,
+          child: SingleChildScrollView(
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: ColorPalette.error.withOpacity(isDark ? 0.2 : 0.1),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: ColorPalette.error.withOpacity(0.3),
+                  width: 1,
+                ),
               ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: ColorPalette.error.withOpacity(isDark ? 0.3 : 0.2),
-                    shape: BoxShape.circle,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: ColorPalette.error.withOpacity(isDark ? 0.3 : 0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      CupertinoIcons.exclamationmark_triangle,
+                      size: 48,
+                      color: ColorPalette.error,
+                    ),
                   ),
-                  child: Icon(
-                    CupertinoIcons.exclamationmark_triangle,
-                    size: 48,
-                    color: ColorPalette.error,
+                  const SizedBox(height: 20),
+                  Text(
+                    _errorMessage!,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.w500,
+                      color: isDark
+                          ? ColorPalette.textPrimaryDark
+                          : ColorPalette.textPrimary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  _errorMessage!,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.w500,
-                    color: isDark
-                        ? ColorPalette.textPrimaryDark
-                        : ColorPalette.textPrimary,
+                  const SizedBox(height: 24),
+                  LiquidGlassButton(
+                    text: 'Retry',
+                    onTap: _initializeServices,
+                    icon: CupertinoIcons.refresh,
+                    height: 48,
                   ),
-                ),
-                const SizedBox(height: 24),
-                LiquidGlassButton(
-                  text: 'Retry',
-                  onTap: _initializeServices,
-                  icon: CupertinoIcons.refresh,
-                  height: 48,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -659,6 +722,7 @@ class _BrowserTabState extends State<BrowserTab> {
 
   @override
   void dispose() {
+    _requestTimeout?.cancel();
     _urlController.dispose();
     super.dispose();
   }

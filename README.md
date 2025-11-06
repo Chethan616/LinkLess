@@ -101,3 +101,6 @@ Educational purposes project.
 ---
 
 **Linkless Browser v1.0** - Encrypted SMS Web Browsing 🔐
+
+## Quick Docs tweak
+Updated docs for clarity.

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:telephony/telephony.dart';
 import 'crypto_service.dart';
 
@@ -22,6 +23,11 @@ class SmsService {
   // Callback for incoming decrypted messages
   Function(String message, String sender)? _onMessageReceived;
 
+  // TEST MODE: Set to true to send unencrypted URLs
+  // ⚠️ WARNING: Only for testing! URLs will be visible in SMS
+  // Set to false for production with proper encryption
+  bool testMode = true; // TODO: Make this configurable via settings
+
   /// Initialize SMS service and request permissions
   Future<bool> initialize() async {
     // Request SMS permissions
@@ -33,6 +39,9 @@ class SmsService {
     }
 
     // Set up SMS listener
+    // Note: listenInBackground set to false since we handle SMS via native receiver
+    // The native BroadcastReceiver (enabled in AndroidManifest.xml) will forward
+    // SMS to the Flutter app even when it's in background
     _telephony.listenIncomingSms(
       onNewMessage: _handleIncomingSms,
       listenInBackground: false,
@@ -66,29 +75,41 @@ class SmsService {
       throw Exception('Gateway phone number not set');
     }
 
-    if (!_cryptoService.isReady) {
-      throw Exception(
-        'Crypto service not ready. Set gateway public key first.',
-      );
-    }
-
     try {
-      // Encrypt the URL
-      final encryptedUrl = await _cryptoService.encrypt(url);
+      String message;
 
-      // Add Linkless prefix
-      final message = 'LK:$encryptedUrl';
+      if (testMode) {
+        // TEST MODE: Send unencrypted URL
+        // ⚠️ WARNING: URL is visible in SMS - FOR TESTING ONLY
+        message = 'LK:$url';
 
-      // Debug logging
-      print('=== SMS SEND DEBUG ===');
-      print('Original URL: $url');
-      print('Encrypted length: ${encryptedUrl.length}');
-      print(
-        'Message prefix: ${message.substring(0, message.length > 20 ? 20 : message.length)}...',
-      );
-      print('Full message length: ${message.length}');
-      print('Gateway number: $_gatewayPhoneNumber');
-      print('=====================');
+        print('=== SMS SEND DEBUG (TEST MODE) ===');
+        print('⚠️  TEST MODE: Sending UNENCRYPTED URL');
+        print('Original URL: $url');
+        print('Message: $message');
+        print('Gateway number: $_gatewayPhoneNumber');
+        print('===================================');
+      } else {
+        // PRODUCTION MODE: Encrypt URL
+        if (!_cryptoService.isReady) {
+          throw Exception(
+            'Crypto service not ready. Set gateway public key first.',
+          );
+        }
+
+        final encryptedUrl = await _cryptoService.encrypt(url);
+        message = 'LK:$encryptedUrl';
+
+        print('=== SMS SEND DEBUG (ENCRYPTED) ===');
+        print('Original URL: $url');
+        print('Encrypted length: ${encryptedUrl.length}');
+        print(
+          'Message prefix: ${message.substring(0, message.length > 20 ? 20 : message.length)}...',
+        );
+        print('Full message length: ${message.length}');
+        print('Gateway number: $_gatewayPhoneNumber');
+        print('===================================');
+      }
 
       // Send SMS
       await _telephony.sendSms(to: _gatewayPhoneNumber!, message: message);
@@ -135,16 +156,52 @@ class SmsService {
 
       if (body.isEmpty) return;
 
+      print('=== SMS RECEIVE DEBUG ===');
+      print('📱 INCOMING SMS DETECTED!');
+      print('From: $sender');
+      print('Length: ${body.length}');
+      print('Timestamp: ${DateTime.now().toIso8601String()}');
+      print(
+        'First 50 chars: ${body.substring(0, body.length > 50 ? 50 : body.length)}',
+      );
+      print('Full message: $body');
+      print('Expected gateway: $_gatewayPhoneNumber');
+      print(
+        'Is from gateway: ${sender.contains(_gatewayPhoneNumber ?? "NO_GATEWAY_SET")}',
+      );
+      print('========================');
+
       String decryptedMessage;
 
       // Check if it's a Linkless request (has LK: prefix)
       if (body.startsWith('LK:')) {
         // This is a request from a client (Gateway receives this)
+        // Gateway side - not used in client app
         final encryptedData = body.substring(3); // Remove "LK:" prefix
-        decryptedMessage = await _cryptoService.decrypt(encryptedData);
+
+        if (testMode) {
+          // In test mode, just pass through the plain URL
+          decryptedMessage = encryptedData;
+        } else {
+          decryptedMessage = await _cryptoService.decrypt(encryptedData);
+        }
       } else {
         // This is a reply from gateway (Client receives this)
-        decryptedMessage = await _cryptoService.decrypt(body);
+        if (testMode) {
+          // In test mode, gateway sends Base64 encoded content
+          print('TEST MODE: Decoding Base64 response');
+          try {
+            final bytes = base64.decode(body);
+            decryptedMessage = utf8.decode(bytes);
+            print('Successfully decoded ${decryptedMessage.length} characters');
+          } catch (e) {
+            print('Base64 decode failed, using raw message: $e');
+            decryptedMessage = body;
+          }
+        } else {
+          // Production mode - decrypt with AES-GCM
+          decryptedMessage = await _cryptoService.decrypt(body);
+        }
       }
 
       // Call the callback if set
@@ -156,7 +213,7 @@ class SmsService {
       // Optionally notify about decryption failure
       if (_onMessageReceived != null) {
         _onMessageReceived!(
-          '⚠️ Failed to decrypt message',
+          '⚠️ Failed to decrypt message: ${e.toString()}',
           message.address ?? 'Unknown',
         );
       }
