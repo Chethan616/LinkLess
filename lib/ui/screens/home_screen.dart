@@ -4,9 +4,10 @@ import '../../core/color_palette.dart';
 import '../widgets/liquid_glass_bottom_bar.dart';
 import 'browser_tab.dart';
 import 'history_tab.dart';
+import 'settings_tab.dart';
 
 /// Home Screen - Main screen with tab navigation and Liquid Glass UI
-/// Contains Browser and History tabs
+/// Contains Browser, History, and Settings tabs
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
 
@@ -17,7 +18,11 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
 
-  final List<Widget> _screens = const [BrowserTab(), HistoryTab()];
+  final List<Widget> _screens = const [
+    BrowserTab(),
+    HistoryTab(),
+    SettingsTab(),
+  ];
 
   @override
   void initState() {
@@ -119,6 +124,11 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'History',
             icon: CupertinoIcons.clock,
             selectedIcon: CupertinoIcons.clock_fill,
+          ),
+          LiquidGlassBottomBarTab(
+            label: 'Settings',
+            icon: CupertinoIcons.settings,
+            selectedIcon: CupertinoIcons.settings_solid,
           ),
         ],
         selectedIndex: _selectedIndex,
