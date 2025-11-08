@@ -94,12 +94,6 @@ See `PROGRESS.md` for detailed development information.
 
 ---
 
-## 📄 License
-
-Educational purposes project.
-
----
-
 **Linkless Browser v1.0** - Encrypted SMS Web Browsing 🔐
 
 ## Quick Docs tweak
